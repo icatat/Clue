@@ -93,11 +93,17 @@ public class ClueReasoner
     private int getPairNum(int playerNum, int cardNum)
     {
         return playerNum * numCards + cardNum + 1;
-    }    
+    }
 
+    /**
+     * Adding general knowledge about the game which is known by all players before the game starts:
+     * 1. Each card is in at least one place.
+     * 2. If a card is one place, it cannot be in another place.
+     * 3. At least one card of each category is in the case file.
+     * 4. No two cards in each category are in the case file.
+     */
     public void addInitialClauses()
     {
-        
         // Each card is in at least one place (including case file).
         for (int c = 0; c < numCards; c++) {
             int[] clause = new int[numPlayers + 1];
@@ -174,33 +180,47 @@ public class ClueReasoner
     }
 
 
+    /**
+     * Adding the clauses that the given cards belongs to the given player.
+     *
+     * @param player the name of the player that the card belongs to
+     * @param cards collection of cards that belongs to the player
+     */
     public void hand(String player, String[] cards) 
     {
-        solver.clearQueryClauses();
-        playerNum = getPlayerNum(player);
+
         for (int c = 0; c < cards.length; c++) {
-            int [] clause1 = new int[1];
-
-            //1. set the player from whose perspective we are reasoning from
-            //2. note that the given card are in the possesion of the player
-            clause1[0] = getPairNum(player, cards[c]);
-
-            solver.addClause(clause1);
+            int [] clause = new int[1];
+            clause[0] = getPairNum(player, cards[c]);
+            solver.addClause(clause);
         }
     }
 
+    /**
+     * Suggestion of type: a suspect, a weapon, and a room, upon entering that room on the board.
+     * A person can refute the suggestion, by provately showing a card to the suggester, without the other person to knpw
+     * If nobody refutes, then the card if either in the caseFile or is in the suggester's hand
+     * @param suggester - player making the suggestion
+     * @param card1 - suspect
+     * @param card2 - weapon
+     * @param card3 - room
+     * @param refuter - person that refutes | can be null - nobody refuted
+     * @param cardShown - the card that the refuter is showing to the suggester | can be null - the player does not get to see the card that is shown to refute
+     */
     public void suggest(String suggester, String card1, String card2, 
                         String card3, String refuter, String cardShown) 
     {
-        if(cardShown != null) {
+        if(cardShown != null) { //if the card is shown, the refuter cannot be null
             int numSuggester = getPlayerNum(suggester);
             int refuterNum = getPlayerNum(refuter);
             int cardShownNum = getCardNum(cardShown);
 
             int [] clause = new int[1];
+            // the suggester knows who has the cardShown
             clause[0] = getPairNum(refuterNum, cardShownNum);
             solver.addClause(clause);
 
+            // the suggester know that any of the cards cannot be in any of the other players' hands
             for (int i = numSuggester + 1; i < refuterNum; i++) {
                 String curPlayer = players[i];
                 int [] suspect = { -getPairNum(curPlayer, card1) };
@@ -217,11 +237,13 @@ public class ClueReasoner
                 int refuterNum = getPlayerNum(refuter);
 
                 int [] clause = new int [3];
+                //if the shownCard is not known, then the refuter can have any of the 3 cards
                 clause[0] = getPairNum(refuter, card1);
                 clause[1] = getPairNum(refuter, card2);
                 clause[2] = getPairNum(refuter, card3);
                 solver.addClause(clause);
 
+                //We still know that the rest of the players do not have any of the cards
                 for (int i = numSuggester + 1; i < refuterNum; i++) {
                     String curPlayer = players[i];
                     int [] suspect = { -getPairNum(curPlayer, card1) };
@@ -234,6 +256,7 @@ public class ClueReasoner
                 }
 
             } else {
+                //ifthe refuter is null, the cards are either in the suggesters' hands or in the caseFile
                 int [] suspect = { getPairNum(suggester, card1), getPairNum(caseFile, card1) };
                 int [] weapon = { getPairNum(suggester, card2), getPairNum(caseFile, card2)  };
                 int [] room = { getPairNum(suggester, card3), getPairNum(caseFile, card3)  };
@@ -245,6 +268,17 @@ public class ClueReasoner
         }
     }
 
+    /**
+     * Dealing with two cases:
+     * 1. the accusation is correct: all 3 predicted cards are in the case file
+     * 2. the accusation is incorrect: atleast one of the three predicted cards are not in the case file
+     *
+     * @param accuser the name of the accuser
+     * @param card1 the name of the suspect that accuser claimed to be in the case file
+     * @param card2 the name of the weapon that accuser claimed to be in the case file
+     * @param card3 the name of the room that accuser claimed to be in the case file
+     * @param isCorrect true if the accusation is right, else false
+     */
     public void accuse(String accuser, String card1, String card2, 
                        String card3, boolean isCorrect)
     {
